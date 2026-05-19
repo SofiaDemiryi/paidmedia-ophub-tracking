@@ -1040,26 +1040,34 @@ function drawCatWeekly(rows) {
 }
 
 function drawCatMonthly(rows) {
+  // Group by derived year-month key (r._ym, set in renderCatalyst) so all weeks of
+  // a calendar month collapse into one bucket — otherwise "ene 26" appears 4-5 times.
   const byMonth = {};
   for (const r of rows) {
-    if (!r.month || !r.solution) continue;
-    if (!byMonth[r.month]) byMonth[r.month] = {};
-    if (!byMonth[r.month][r.solution]) byMonth[r.month][r.solution] = [];
-    if (r.usage != null) byMonth[r.month][r.solution].push(r.usage);
+    const ym = r._ym;
+    if (!ym || !r.solution) continue;
+    if (!byMonth[ym]) byMonth[ym] = {};
+    if (!byMonth[ym][r.solution]) byMonth[ym][r.solution] = [];
+    if (r.usage != null) byMonth[ym][r.solution].push(r.usage);
   }
-  const months = Object.keys(byMonth).sort((a,b) => new Date(a) - new Date(b));
+  const months = Object.keys(byMonth).sort();
   const solutions = uniq(rows.map(r => r.solution)).sort();
   const datasets = solutions.map((s,i) => ({
     label: s,
     data: months.map(m => byMonth[m][s] && byMonth[m][s].length ? avg(byMonth[m][s]) * 100 : null),
     backgroundColor: colorFor(i),
   }));
+  // Friendly month labels — "abr 26" instead of "2026-04"
+  const labelOfYM = (ym) => {
+    const [y, m] = ym.split("-").map(Number);
+    return new Date(y, m - 1, 1).toLocaleDateString("es-AR", { month: "short", year: "2-digit" });
+  };
   const mAllVals = datasets.flatMap(d => d.data).filter(v => v != null);
   const mPeak = mAllVals.length ? Math.max(...mAllVals) : 100;
   const mYMax = Math.ceil(Math.max(mPeak, 100) / 10) * 10 + 5;
   CHARTS["cat-monthly"] = new Chart($("#cat-monthly-chart"), {
     type: "bar",
-    data: { labels: months.map(monthLabel), datasets },
+    data: { labels: months.map(labelOfYM), datasets },
     options: {
       responsive: true, maintainAspectRatio: false,
       scales: { y: { beginAtZero: true, max: mYMax, ticks: { callback: v => v+"%" } } },
