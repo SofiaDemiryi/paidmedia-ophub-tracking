@@ -276,6 +276,13 @@
     color: var(--text-muted);
   }
   .table-filters .clear-btn:hover { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+  .filter-count {
+    font-size: 12px;
+    color: var(--text-muted);
+    align-self: center;
+    margin-left: 6px;
+  }
+  .filter-count strong { color: var(--accent); font-weight: 600; }
 
   /* Heatmap */
   .heatmap-table {
@@ -424,6 +431,7 @@
           <label>Manager<select id="prod-tbl-manager"></select></label>
           <label>Mes<select id="prod-tbl-month"></select></label>
           <button class="clear-btn" id="prod-tbl-clear">Limpiar</button>
+          <span class="filter-count" id="prod-tbl-count"></span>
         </div>
         <div id="mgr-prod-table"></div>
       </div>
@@ -435,6 +443,7 @@
           <label>Manager<select id="usg-tbl-manager"></select></label>
           <label>Mes<select id="usg-tbl-month"></select></label>
           <button class="clear-btn" id="usg-tbl-clear">Limpiar</button>
+          <span class="filter-count" id="usg-tbl-count"></span>
         </div>
         <div id="mgr-usage-table"></div>
       </div>
@@ -915,47 +924,74 @@ function renderManagers() {
   drawMgrToolsChart(usage);
   drawMgrHeatmap(usage);
 
-  // Per-table filters — Productividad
-  const prodManagers = uniq(prod.map(r=>r.manager)).sort();
-  const prodMonths = uniq(prod.map(r=>r.month)).sort((a,b)=>a-b);
-  populateSelect("#prod-tbl-manager", prodManagers);
-  populateSelect("#prod-tbl-month", prodMonths);
-  const drawProdTable = () => {
-    const fm = $("#prod-tbl-manager").value;
-    const fM = $("#prod-tbl-month").value;
-    const rows = prod.filter(r =>
-      (!fm || r.manager === fm) &&
-      (!fM || String(r.month) === fM)
-    );
-    drawMgrProdTable(rows);
-  };
-  ["#prod-tbl-manager","#prod-tbl-month"].forEach(s => $(s).onchange = drawProdTable);
-  $("#prod-tbl-clear").onclick = () => {
-    $("#prod-tbl-manager").value = ""; $("#prod-tbl-month").value = "";
-    drawProdTable();
-  };
-  drawProdTable();
+  setupTableFilters({
+    source: prod,
+    managerSel: "#prod-tbl-manager",
+    monthSel: "#prod-tbl-month",
+    clearBtn: "#prod-tbl-clear",
+    countEl: "#prod-tbl-count",
+    render: drawMgrProdTable,
+    label: "Productividad",
+  });
 
-  // Per-table filters — Usage
-  const usgManagers = uniq(usage.map(r=>r.manager)).sort();
-  const usgMonths = uniq(usage.map(r=>r.month)).sort((a,b)=>a-b);
-  populateSelect("#usg-tbl-manager", usgManagers);
-  populateSelect("#usg-tbl-month", usgMonths);
-  const drawUsgTable = () => {
-    const fm = $("#usg-tbl-manager").value;
-    const fM = $("#usg-tbl-month").value;
-    const rows = usage.filter(r =>
+  setupTableFilters({
+    source: usage,
+    managerSel: "#usg-tbl-manager",
+    monthSel: "#usg-tbl-month",
+    clearBtn: "#usg-tbl-clear",
+    countEl: "#usg-tbl-count",
+    render: drawMgrUsageTable,
+    label: "Usage Tracking",
+  });
+}
+
+// Reusable per-table filter helper. Uses addEventListener for robustness,
+// keeps state internal, and prints a "Mostrando X de Y" indicator.
+function setupTableFilters(cfg) {
+  const { source, managerSel, monthSel, clearBtn, countEl, render, label } = cfg;
+  const managers = uniq(source.map(r => r.manager)).sort();
+  const months = uniq(source.map(r => r.month)).sort((a, b) => a - b);
+  populateSelect(managerSel, managers);
+  populateSelect(monthSel, months);
+
+  const apply = () => {
+    const fm = $(managerSel).value;
+    const fM = $(monthSel).value;
+    const rows = source.filter(r =>
       (!fm || r.manager === fm) &&
       (!fM || String(r.month) === fM)
     );
-    drawMgrUsageTable(rows);
+    const cEl = $(countEl);
+    if (cEl) {
+      const active = (fm || fM) ? `<strong>${rows.length}</strong> de ${source.length}` : `${source.length}`;
+      cEl.innerHTML = `Mostrando ${active} filas`;
+    }
+    render(rows);
   };
-  ["#usg-tbl-manager","#usg-tbl-month"].forEach(s => $(s).onchange = drawUsgTable);
-  $("#usg-tbl-clear").onclick = () => {
-    $("#usg-tbl-manager").value = ""; $("#usg-tbl-month").value = "";
-    drawUsgTable();
-  };
-  drawUsgTable();
+
+  // Use addEventListener for clean behavior, and listen on 'change' AND 'input'
+  // (some browsers fire 'input' for selects when value programmatically changes).
+  [managerSel, monthSel].forEach(s => {
+    const el = $(s);
+    if (!el) return;
+    // remove any prior listeners by cloning the node
+    const fresh = el.cloneNode(true);
+    el.parentNode.replaceChild(fresh, el);
+    fresh.addEventListener("change", apply);
+  });
+
+  const clearEl = $(clearBtn);
+  if (clearEl) {
+    const fresh = clearEl.cloneNode(true);
+    clearEl.parentNode.replaceChild(fresh, clearEl);
+    fresh.addEventListener("click", () => {
+      $(managerSel).value = "";
+      $(monthSel).value = "";
+      apply();
+    });
+  }
+
+  apply();
 }
 
 function drawMgrKpis(prodRows, usageRows) {
