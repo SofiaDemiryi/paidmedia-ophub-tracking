@@ -555,10 +555,6 @@
       </div>
     </section>
 
-    <div class="footer-note">
-      Datos embebidos · Para refrescar, descargar el Sheet como XLSX, subirlo a Sofi y regenerar este HTML ·
-      <span id="footer-ts">…</span>
-    </div>
   </main>
 </div>
 
@@ -853,7 +849,8 @@ function boot() {
   const g = DATA.generatedAt ? new Date(DATA.generatedAt) : new Date();
   const label = g.toLocaleString("es-AR", { dateStyle: "medium", timeStyle: "short" });
   $("#last-updated").textContent = "Datos al: " + label;
-  $("#footer-ts").textContent = "Generado: " + label + " · Fuente: " + (DATA.sourceFile || "—");
+  const footerTs = $("#footer-ts");
+  if (footerTs) footerTs.textContent = "Generado: " + label + " · Fuente: " + (DATA.sourceFile || "—");
 
   $$("nav.tabs button").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -873,28 +870,49 @@ function boot() {
 // =====================================================
 function renderCatalyst() {
   destroyCharts("cat-");
-  // Exclude all "Adhoc Solutions" variants from any chart/table per business request
-  const all = DATA.catalystTrend.filter(r =>
-    !r.solution || !String(r.solution).toLowerCase().startsWith("adhoc")
-  );
+  // Exclude "Adhoc Solutions" and "OH Solutions - Tools" from any chart/table
+  const EXCLUDED_SOLUTIONS = new Set(["OH Solutions - Tools"]);
+  const all = DATA.catalystTrend.filter(r => {
+    const s = String(r.solution || "");
+    if (s.toLowerCase().startsWith("adhoc")) return false;
+    if (EXCLUDED_SOLUTIONS.has(s)) return false;
+    return true;
+  });
+
+  // Derive a year-month key (e.g., "2026-04") for each row so filtering groups all
+  // weeks in the same calendar month — the source has inconsistent date granularity.
+  const ymKey = (raw) => {
+    if (!raw) return null;
+    const d = new Date(raw);
+    if (isNaN(d)) return null;
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+  };
+  all.forEach(r => { r._ym = ymKey(r.month); });
+
   const years = uniq(all.map(r => r.year)).sort();
   const quarters = uniq(all.map(r => r.quarter)).sort();
-  const months = uniq(all.map(r => r.month)).sort((a,b)=> new Date(a) - new Date(b));
+  // Unique year-months, sorted chronologically
+  const yearMonths = uniq(all.map(r => r._ym).filter(Boolean)).sort();
   const solutions = uniq(all.map(r => r.solution)).sort();
   const managers = uniq(all.map(r => r.manager)).sort();
   const clients = uniq(all.map(r => r.client)).sort();
 
   populateSelect("#cat-year", years);
   populateSelect("#cat-quarter", quarters);
-  populateSelect("#cat-month", months.map(m => ({raw:m, lab: monthLabel(m)})).map(x => x.raw));
+  populateSelect("#cat-month", yearMonths);
   populateSelect("#cat-solution", solutions);
   populateSelect("#cat-manager", managers);
   populateSelect("#cat-client", clients);
 
-  // Replace month select labels with friendly version
+  // Pretty month labels (kept on the ORIGINAL element BEFORE cloning happens)
+  const ymLabel = (ym) => {
+    if (!ym) return "—";
+    const [y, m] = ym.split("-").map(Number);
+    return new Date(y, m - 1, 1).toLocaleDateString("es-AR", { month: "short", year: "2-digit" });
+  };
   const monthSel = $("#cat-month");
   Array.from(monthSel.options).forEach(o => {
-    if (o.value) o.textContent = monthLabel(o.value);
+    if (o.value) o.textContent = ymLabel(o.value);
   });
 
   const applyFilters = () => {
@@ -907,7 +925,7 @@ function renderCatalyst() {
     return all.filter(r =>
       (!fy || String(r.year) === fy) &&
       (!fq || r.quarter === fq) &&
-      (!fm || r.month === fm) &&
+      (!fm || r._ym === fm) &&
       (!fs || r.solution === fs) &&
       (!fmgr || r.manager === fmgr) &&
       (!fc || r.client === fc)
@@ -952,7 +970,11 @@ function drawCatKpis(rows, all) {
   const lwSorted = [...lw].sort((a,b) => (b.value||0) - (a.value||0));
   const top = lwSorted[0], bot = lwSorted[lwSorted.length-1];
   const avgFilt = rows.length ? avg(rows.map(r => r.usage).filter(x => x!=null)) : null;
-  const latestWeek = Math.max(0, ...all.map(r => r.week).filter(x => x!=null));
+  // "Latest week" = the row with the most recent date in r.month (the column holds
+  // week-start dates for recent data). Pick week + year from that row, not Math.max.
+  const datedRows = all.filter(r => r.month).sort((a, b) => new Date(b.month) - new Date(a.month));
+  const latestRow = datedRows[0];
+  const latestWeekLabel = latestRow ? `W${latestRow.week} · ${latestRow.year}` : "—";
   const totalRows = rows.length;
 
   c.innerHTML = `
@@ -978,7 +1000,7 @@ function drawCatKpis(rows, all) {
     </div>
     <div class="kpi">
       <div class="label">Semana ISO más reciente</div>
-      <div class="value">W${latestWeek||"—"}</div>
+      <div class="value">${latestWeekLabel}</div>
       <div class="sub">Catalyst Trend Usage</div>
     </div>
   `;
