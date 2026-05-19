@@ -258,7 +258,7 @@
     font-size: 11px; color: var(--text-muted);
     text-transform: uppercase; letter-spacing: 0.03em;
   }
-  .table-filters select {
+  .table-filters select, .table-filters input[type="text"] {
     background: white;
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-sm);
@@ -266,7 +266,8 @@
     font-family: var(--font); color: var(--text);
     cursor: pointer; min-width: 140px;
   }
-  .table-filters select:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+  .table-filters input[type="text"] { cursor: text; min-width: 180px; }
+  .table-filters select:focus, .table-filters input:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
   .table-filters .clear-btn {
     background: white;
     border: 1px solid var(--border-strong);
@@ -430,6 +431,7 @@
         <div class="table-filters">
           <label>Manager<select id="prod-tbl-manager"></select></label>
           <label>Mes<select id="prod-tbl-month"></select></label>
+          <label>Buscar<input type="text" id="prod-tbl-search" placeholder="cliente, comentarios…"/></label>
           <button class="clear-btn" id="prod-tbl-clear">Limpiar</button>
           <span class="filter-count" id="prod-tbl-count"></span>
         </div>
@@ -442,6 +444,7 @@
         <div class="table-filters">
           <label>Manager<select id="usg-tbl-manager"></select></label>
           <label>Mes<select id="usg-tbl-month"></select></label>
+          <label>Buscar<input type="text" id="usg-tbl-search" placeholder="cliente, comentarios…"/></label>
           <button class="clear-btn" id="usg-tbl-clear">Limpiar</button>
           <span class="filter-count" id="usg-tbl-count"></span>
         </div>
@@ -761,11 +764,23 @@ function renderCatalyst() {
     drawCatLastWeek();
     drawCatTable(rows);
   };
-  ["#cat-year","#cat-quarter","#cat-month","#cat-solution","#cat-manager","#cat-client"].forEach(s => $(s).onchange = draw);
-  $("#cat-clear").onclick = () => {
-    ["#cat-year","#cat-quarter","#cat-month","#cat-solution","#cat-manager","#cat-client"].forEach(s => $(s).value = "");
-    draw();
-  };
+  // Bind handlers robustly: clone selects to drop any prior listener, then addEventListener
+  const SELS = ["#cat-year","#cat-quarter","#cat-month","#cat-solution","#cat-manager","#cat-client"];
+  SELS.forEach(s => {
+    const el = $(s); if (!el) return;
+    const fresh = el.cloneNode(true);
+    el.parentNode.replaceChild(fresh, el);
+    fresh.addEventListener("change", draw);
+  });
+  const clrEl = $("#cat-clear");
+  if (clrEl) {
+    const fresh = clrEl.cloneNode(true);
+    clrEl.parentNode.replaceChild(fresh, clrEl);
+    fresh.addEventListener("click", () => {
+      SELS.forEach(s => { const el = $(s); if (el) el.value = ""; });
+      draw();
+    });
+  }
   draw();
 }
 
@@ -928,65 +943,78 @@ function renderManagers() {
     source: prod,
     managerSel: "#prod-tbl-manager",
     monthSel: "#prod-tbl-month",
+    searchInput: "#prod-tbl-search",
     clearBtn: "#prod-tbl-clear",
     countEl: "#prod-tbl-count",
     render: drawMgrProdTable,
-    label: "Productividad",
+    searchableKeys: ["manager","client","comentarios","quarter"],
   });
 
   setupTableFilters({
     source: usage,
     managerSel: "#usg-tbl-manager",
     monthSel: "#usg-tbl-month",
+    searchInput: "#usg-tbl-search",
     clearBtn: "#usg-tbl-clear",
     countEl: "#usg-tbl-count",
     render: drawMgrUsageTable,
-    label: "Usage Tracking",
+    searchableKeys: ["manager","client","comentarios"],
   });
 }
 
-// Reusable per-table filter helper. Uses addEventListener for robustness,
-// keeps state internal, and prints a "Mostrando X de Y" indicator.
+// Reusable per-table filter helper. Manager dropdown + Mes dropdown + free-text search.
+// Uses addEventListener for robust binding; "Mostrando X de Y" counter for visibility.
 function setupTableFilters(cfg) {
-  const { source, managerSel, monthSel, clearBtn, countEl, render, label } = cfg;
+  const { source, managerSel, monthSel, searchInput, clearBtn, countEl, render, searchableKeys } = cfg;
   const managers = uniq(source.map(r => r.manager)).sort();
   const months = uniq(source.map(r => r.month)).sort((a, b) => a - b);
   populateSelect(managerSel, managers);
   populateSelect(monthSel, months);
 
   const apply = () => {
-    const fm = $(managerSel).value;
-    const fM = $(monthSel).value;
-    const rows = source.filter(r =>
-      (!fm || r.manager === fm) &&
-      (!fM || String(r.month) === fM)
-    );
+    const fm = $(managerSel)?.value || "";
+    const fM = $(monthSel)?.value || "";
+    const q = ($(searchInput)?.value || "").trim().toLowerCase();
+    const matches = (r) => {
+      if (fm && r.manager !== fm) return false;
+      if (fM && String(r.month) !== fM) return false;
+      if (q) {
+        const hay = (searchableKeys || []).map(k => String(r[k] || "").toLowerCase()).join(" | ");
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    };
+    const rows = source.filter(matches);
     const cEl = $(countEl);
     if (cEl) {
-      const active = (fm || fM) ? `<strong>${rows.length}</strong> de ${source.length}` : `${source.length}`;
-      cEl.innerHTML = `Mostrando ${active} filas`;
+      const any = fm || fM || q;
+      cEl.innerHTML = any
+        ? `Mostrando <strong>${rows.length}</strong> de ${source.length} filas`
+        : `Mostrando ${source.length} filas`;
     }
     render(rows);
   };
 
-  // Use addEventListener for clean behavior, and listen on 'change' AND 'input'
-  // (some browsers fire 'input' for selects when value programmatically changes).
-  [managerSel, monthSel].forEach(s => {
-    const el = $(s);
+  // Bind change/input handlers, clearing any prior listeners via cloneNode
+  const bind = (sel, evt) => {
+    const el = $(sel);
     if (!el) return;
-    // remove any prior listeners by cloning the node
     const fresh = el.cloneNode(true);
     el.parentNode.replaceChild(fresh, el);
-    fresh.addEventListener("change", apply);
-  });
+    fresh.addEventListener(evt, apply);
+  };
+  bind(managerSel, "change");
+  bind(monthSel, "change");
+  bind(searchInput, "input");
 
   const clearEl = $(clearBtn);
   if (clearEl) {
     const fresh = clearEl.cloneNode(true);
     clearEl.parentNode.replaceChild(fresh, clearEl);
     fresh.addEventListener("click", () => {
-      $(managerSel).value = "";
-      $(monthSel).value = "";
+      const mgrEl = $(managerSel); if (mgrEl) mgrEl.value = "";
+      const monEl = $(monthSel); if (monEl) monEl.value = "";
+      const srcEl = $(searchInput); if (srcEl) srcEl.value = "";
       apply();
     });
   }
@@ -1168,7 +1196,7 @@ function drawMgrProdTable(rows) {
   const wrap = $("#mgr-prod-table"); wrap.innerHTML = "";
   new gridjs.Grid({
     columns: ["Year","Q","Mes","Manager","Cliente","Productividad","Target","% Compl.","Dif","Comentarios"],
-    data, pagination: { limit: 10 }, search: true, sort: true,
+    data, pagination: { limit: 10 }, search: false, sort: true,
   }).render(wrap);
 }
 
@@ -1183,7 +1211,7 @@ function drawMgrUsageTable(rows) {
   const wrap = $("#mgr-usage-table"); wrap.innerHTML = "";
   new gridjs.Grid({
     columns: ["Mes","Manager","Cliente","Pacing","QA Assets","QA Changes","QA Mensual","Adhoc","Agentic","Count","% Uso"],
-    data, pagination: { limit: 10 }, search: true, sort: true,
+    data, pagination: { limit: 10 }, search: false, sort: true,
   }).render(wrap);
 }
 
