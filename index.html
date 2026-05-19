@@ -1023,12 +1023,17 @@ function drawCatWeekly(rows) {
     backgroundColor: colorFor(i) + "22",
     tension: 0.25, fill: false, pointRadius: 3, spanGaps: true,
   }));
+  // Dynamic max — round up to next 10 above the actual peak so lines that exceed 100%
+  // (e.g., over-completion) are fully visible instead of being clipped at the top.
+  const allVals = datasets.flatMap(d => d.data).filter(v => v != null);
+  const peak = allVals.length ? Math.max(...allVals) : 100;
+  const yMax = Math.ceil(Math.max(peak, 100) / 10) * 10 + 5;
   CHARTS["cat-weekly"] = new Chart($("#cat-weekly-chart"), {
     type: "line",
     data: { labels: weeks.map(w => "W"+w), datasets },
     options: {
       responsive: true, maintainAspectRatio: false,
-      scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => v+"%" } } },
+      scales: { y: { beginAtZero: true, max: yMax, ticks: { callback: v => v+"%" } } },
       plugins: { legend: { position: "top", align: "end" } }
     }
   });
@@ -1049,12 +1054,15 @@ function drawCatMonthly(rows) {
     data: months.map(m => byMonth[m][s] && byMonth[m][s].length ? avg(byMonth[m][s]) * 100 : null),
     backgroundColor: colorFor(i),
   }));
+  const mAllVals = datasets.flatMap(d => d.data).filter(v => v != null);
+  const mPeak = mAllVals.length ? Math.max(...mAllVals) : 100;
+  const mYMax = Math.ceil(Math.max(mPeak, 100) / 10) * 10 + 5;
   CHARTS["cat-monthly"] = new Chart($("#cat-monthly-chart"), {
     type: "bar",
     data: { labels: months.map(monthLabel), datasets },
     options: {
       responsive: true, maintainAspectRatio: false,
-      scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => v+"%" } } },
+      scales: { y: { beginAtZero: true, max: mYMax, ticks: { callback: v => v+"%" } } },
       plugins: { legend: { position: "top", align: "end" } }
     }
   });
