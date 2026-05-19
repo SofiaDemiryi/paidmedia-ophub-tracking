@@ -285,6 +285,58 @@
   }
   .filter-count strong { color: var(--accent); font-weight: 600; }
 
+  /* Custom simple table (replaces gridjs in some places) */
+  .simple-table-wrap { overflow-x: auto; }
+  table.simple-table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 12px;
+  }
+  table.simple-table thead th {
+    background: var(--bg-soft);
+    text-align: left;
+    padding: 8px 10px;
+    font-weight: 600;
+    font-size: 11px;
+    color: var(--text);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+  }
+  table.simple-table thead th:hover { background: var(--accent-soft); }
+  table.simple-table thead th .sort-arrow { color: var(--text-muted); margin-left: 4px; }
+  table.simple-table thead th.sorted .sort-arrow { color: var(--accent); }
+  table.simple-table tbody td {
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  table.simple-table tbody tr:hover td { background: #fafaf8; }
+  table.simple-table tbody td.numeric { text-align: right; font-variant-numeric: tabular-nums; }
+  .simple-pagination {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 4px 2px; font-size: 12px; color: var(--text-muted);
+  }
+  .simple-pagination button {
+    background: white;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    padding: 4px 10px; font-size: 12px;
+    cursor: pointer; font-family: var(--font);
+    color: var(--text);
+    margin: 0 2px;
+  }
+  .simple-pagination button:hover:not(:disabled) {
+    background: var(--accent-soft); color: var(--accent); border-color: var(--accent);
+  }
+  .simple-pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .simple-pagination button.active {
+    background: var(--accent); color: white; border-color: var(--accent); font-weight: 600;
+  }
+  .simple-empty { text-align: center; padding: 28px; color: var(--text-muted); font-size: 13px; }
+
   /* Heatmap */
   .heatmap-table {
     border-collapse: collapse;
@@ -635,6 +687,110 @@ function prettifyEmailUser(s) {
   const local = String(s).split("@")[0];
   return local.split(/[._]/).map(w => w[0] ? w[0].toUpperCase() + w.slice(1) : w).join(" ");
 }
+
+// Custom simple-table renderer. Vanilla HTML table + pagination + sortable.
+// Idempotent — calling on the same target fully replaces previous render.
+function simpleTable(target, columns, rows, opts) {
+  opts = opts || {};
+  const pageSize = opts.pageSize || 10;
+  const el = (typeof target === "string") ? $(target) : target;
+  if (!el) return;
+  el.innerHTML = "";
+  if (!rows || rows.length === 0) {
+    el.innerHTML = '<div class="simple-empty">Sin filas para los filtros activos.</div>';
+    return;
+  }
+  const state = { sortIdx: -1, sortDir: 1, page: 1, rows: rows.slice() };
+  const numericCmp = (a, b) => {
+    const na = Number(String(a).replace(/[^\d.\-]/g, ""));
+    const nb = Number(String(b).replace(/[^\d.\-]/g, ""));
+    if (!isNaN(na) && !isNaN(nb) && String(a).match(/\d/) && String(b).match(/\d/)) return na - nb;
+    return String(a).localeCompare(String(b));
+  };
+  const render = () => {
+    el.innerHTML = "";
+    let working = state.rows;
+    if (state.sortIdx >= 0) {
+      working = working.slice().sort((a, b) => state.sortDir * numericCmp(a[state.sortIdx], b[state.sortIdx]));
+    }
+    const total = working.length;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    if (state.page > totalPages) state.page = totalPages;
+    const start = (state.page - 1) * pageSize;
+    const pageRows = working.slice(start, start + pageSize);
+
+    const wrap = document.createElement("div");
+    wrap.className = "simple-table-wrap";
+    const tbl = document.createElement("table");
+    tbl.className = "simple-table";
+    const thead = document.createElement("thead");
+    const trh = document.createElement("tr");
+    columns.forEach((col, i) => {
+      const th = document.createElement("th");
+      const isSorted = state.sortIdx === i;
+      if (isSorted) th.classList.add("sorted");
+      th.innerHTML = `${col}<span class="sort-arrow">${isSorted ? (state.sortDir > 0 ? "↑" : "↓") : "↕"}</span>`;
+      th.addEventListener("click", () => {
+        if (state.sortIdx === i) state.sortDir = -state.sortDir;
+        else { state.sortIdx = i; state.sortDir = 1; }
+        render();
+      });
+      trh.appendChild(th);
+    });
+    thead.appendChild(trh);
+    tbl.appendChild(thead);
+    const tbody = document.createElement("tbody");
+    pageRows.forEach(row => {
+      const tr = document.createElement("tr");
+      row.forEach(cell => {
+        const td = document.createElement("td");
+        const sCell = (cell == null) ? "" : String(cell);
+        if (/^[\$\-\d., %]+$/.test(sCell.trim()) && /\d/.test(sCell)) td.classList.add("numeric");
+        td.textContent = sCell;
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    tbl.appendChild(tbody);
+    wrap.appendChild(tbl);
+
+    const pag = document.createElement("div");
+    pag.className = "simple-pagination";
+    const info = document.createElement("div");
+    info.textContent = `${start + 1}–${Math.min(start + pageSize, total)} de ${total}`;
+    const controls = document.createElement("div");
+    const mkBtn = (label, onClick, disabled, active) => {
+      const b = document.createElement("button");
+      b.textContent = label;
+      if (disabled) b.disabled = true;
+      if (active) b.classList.add("active");
+      if (!disabled) b.addEventListener("click", onClick);
+      return b;
+    };
+    controls.appendChild(mkBtn("←", () => { state.page--; render(); }, state.page === 1));
+    const pagesSet = new Set([1, totalPages]);
+    for (let p = Math.max(1, state.page - 2); p <= Math.min(totalPages, state.page + 2); p++) pagesSet.add(p);
+    const sortedPages = [...pagesSet].sort((a, b) => a - b);
+    let prevP = 0;
+    sortedPages.forEach(p => {
+      if (p - prevP > 1) {
+        const span = document.createElement("span");
+        span.textContent = "…"; span.style.margin = "0 4px"; span.style.color = "var(--text-muted)";
+        controls.appendChild(span);
+      }
+      controls.appendChild(mkBtn(String(p), () => { state.page = p; render(); }, false, p === state.page));
+      prevP = p;
+    });
+    controls.appendChild(mkBtn("→", () => { state.page++; render(); }, state.page === totalPages));
+    pag.appendChild(info);
+    pag.appendChild(controls);
+
+    el.appendChild(wrap);
+    el.appendChild(pag);
+  };
+  render();
+}
+
 function populateSelect(sel, options, allLabel="Todos") {
   const el = $(sel); if (!el) return;
   const prev = el.value;
@@ -917,11 +1073,10 @@ function drawCatTable(rows) {
     r.user || "—",
     fmtPct(r.usage),
   ]);
-  const wrap = $("#cat-table"); wrap.innerHTML = "";
-  new gridjs.Grid({
-    columns: ["Year","Q","Mes","W","Solution","Manager","Client","User","Usage"],
-    data, pagination: { limit: 12 }, search: true, sort: true,
-  }).render(wrap);
+  simpleTable("#cat-table",
+    ["Year","Q","Mes","W","Solution","Manager","Client","User","Usage"],
+    data, { pageSize: 12 }
+  );
 }
 
 // =====================================================
@@ -1193,11 +1348,10 @@ function drawMgrProdTable(rows) {
     r.dif != null ? fmtNumber(r.dif, 1) : "—",
     r.comentarios || "",
   ]);
-  const wrap = $("#mgr-prod-table"); wrap.innerHTML = "";
-  new gridjs.Grid({
-    columns: ["Year","Q","Mes","Manager","Cliente","Productividad","Target","% Compl.","Dif","Comentarios"],
-    data, pagination: { limit: 10 }, search: false, sort: true,
-  }).render(wrap);
+  simpleTable("#mgr-prod-table",
+    ["Year","Q","Mes","Manager","Cliente","Productividad","Target","% Compl.","Dif","Comentarios"],
+    data, { pageSize: 10 }
+  );
 }
 
 function drawMgrUsageTable(rows) {
@@ -1208,11 +1362,10 @@ function drawMgrUsageTable(rows) {
     r.usage_count != null ? r.usage_count : "—",
     fmtPct(r.pct_usage),
   ]);
-  const wrap = $("#mgr-usage-table"); wrap.innerHTML = "";
-  new gridjs.Grid({
-    columns: ["Mes","Manager","Cliente","Pacing","QA Assets","QA Changes","QA Mensual","Adhoc","Agentic","Count","% Uso"],
-    data, pagination: { limit: 10 }, search: false, sort: true,
-  }).render(wrap);
+  simpleTable("#mgr-usage-table",
+    ["Mes","Manager","Cliente","Pacing","QA Assets","QA Changes","QA Mensual","Adhoc","Agentic","Count","% Uso"],
+    data, { pageSize: 10 }
+  );
 }
 
 // =====================================================
