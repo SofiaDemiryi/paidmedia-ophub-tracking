@@ -873,11 +873,13 @@ function boot() {
 // =====================================================
 function renderCatalyst() {
   destroyCharts("cat-");
-  const all = DATA.catalystTrend;
+  // Exclude all "Adhoc Solutions" variants from any chart/table per business request
+  const all = DATA.catalystTrend.filter(r =>
+    !r.solution || !String(r.solution).toLowerCase().startsWith("adhoc")
+  );
   const years = uniq(all.map(r => r.year)).sort();
   const quarters = uniq(all.map(r => r.quarter)).sort();
   const months = uniq(all.map(r => r.month)).sort((a,b)=> new Date(a) - new Date(b));
-  // Only main solutions (not the sub-categories with " - ")
   const solutions = uniq(all.map(r => r.solution)).sort();
   const managers = uniq(all.map(r => r.manager)).sort();
   const clients = uniq(all.map(r => r.client)).sort();
@@ -913,6 +915,9 @@ function renderCatalyst() {
   };
 
   const draw = () => {
+    // CRITICAL: destroy existing Chart.js instances before re-rendering,
+    // otherwise Chart.js silently keeps the old chart on the same canvas.
+    destroyCharts("cat-");
     const rows = applyFilters();
     drawCatKpis(rows, all);
     drawCatWeekly(rows);
@@ -964,7 +969,7 @@ function drawCatKpis(rows, all) {
     <div class="kpi red">
       <div class="label">Menor adopción</div>
       <div class="value" style="font-size:18px">${bot ? bot.solution : "—"}</div>
-      <div class="sub">${bot ? fmtPct(bot.value) : ""}</div>
+      <div class="sub">${bot ? fmtPct(bot.value) : ""}${bot && bot.solution === "QA Changes" ? '<br><span style="font-style:italic;color:var(--text-muted)">⚠ Esta feature no tiene cadencia semanal — uso adhoc según ejecuten cambios en campañas</span>' : ''}</div>
     </div>
     <div class="kpi">
       <div class="label">Promedio uso (filtro)</div>
