@@ -1591,7 +1591,7 @@ function drawAgSpendByClient(cost) {
 function drawAgCostTable(cost) {
   const data = cost.map(r => [r.month || "—", r.client || "—", r.user || "—", fmtUSD(r.gasto)]);
   const wrap = $("#ag-cost-table"); wrap.innerHTML = "";
-  new gridjs.Grid({ columns: ["Mes","Cliente","Usuario","Gasto MTD"], data, pagination: { limit: 10 }, search: true, sort: true }).render(wrap);
+  new gridjs.Grid({ columns: ["Mes","Cliente","Usuario","Gasto MTD"], data, pagination: { limit: 10 }, search: true, sort: true, language: { search: { placeholder: "Type a clapper name..." } } }).render(wrap);
 }
 
 function drawAgExecTable(rows) {
@@ -1602,7 +1602,7 @@ function drawAgExecTable(rows) {
     r.executions
   ]);
   const wrap = $("#ag-exec-table"); wrap.innerHTML = "";
-  new gridjs.Grid({ columns: ["Fecha","Usuario","Cliente","Executives"], data, pagination: { limit: 10 }, search: true, sort: true }).render(wrap);
+  new gridjs.Grid({ columns: ["Fecha","Usuario","Cliente","Executives"], data, pagination: { limit: 10 }, search: true, sort: true, language: { search: { placeholder: "Type a clapper name..." } } }).render(wrap);
 }
 </script>
 
