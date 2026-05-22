@@ -1129,13 +1129,17 @@ function renderManagers() {
   destroyCharts("mgr-");
   const prod = DATA.managerProd;
   const usage = DATA.managerUsage;
+  // Bancor: cliente que arranca a contabilizarse en mayo — se excluye del heatmap
+  // de completitud y de la tabla Detalle Manager Usage Tracking para no
+  // distorsionar los meses previos a su onboarding.
+  const usageNoBancor = usage.filter(r => (r.client || "").toUpperCase() !== "BANCOR");
 
   // Charts always use ALL data (no top filter)
   drawMgrKpis(prod, usage);
   drawMgrProdChart(prod);
   drawMgrComplChart(prod);
   drawMgrToolsChart(usage);
-  drawMgrHeatmap(usage);
+  drawMgrHeatmap(usageNoBancor);
 
   setupTableFilters({
     source: prod,
@@ -1149,7 +1153,7 @@ function renderManagers() {
   });
 
   setupTableFilters({
-    source: usage,
+    source: usageNoBancor,
     managerSel: "#usg-tbl-manager",
     monthSel: "#usg-tbl-month",
     searchInput: "#usg-tbl-search",
