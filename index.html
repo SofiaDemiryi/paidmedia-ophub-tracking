@@ -1438,7 +1438,11 @@ function renderAgentic() {
 function drawAgKpis(rows, cost, seats) {
   const c = $("#ag-kpis");
   const totalExec = sum(rows.map(r => r.executions));
-  const uUsers = uniq(rows.map(r => r.user)).length;
+  // Usuarios únicos = seats activos (fuente de verdad de cuenta de personas).
+  // Se prefiere sobre uniq(r.user) porque ese conteo refleja solo quienes
+  // ejecutaron algo en el período, no la dotación habilitada.
+  const seatUsers = uniq(rows.map(r => r.user)).length;
+  const uUsers = (seats && seats.count != null) ? seats.count : seatUsers;
   const uClients = uniq(rows.map(r => r.client)).length;
   const totalSpend = sum(cost.map(r => r.gasto));
   const byWeek = {};
