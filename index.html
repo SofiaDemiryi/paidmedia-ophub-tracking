@@ -1427,27 +1427,31 @@ function drawMgrUsageTable(rows) {
 const MONTH_NAMES_ES = ["", "enero","febrero","marzo","abril","mayo","junio",
   "julio","agosto","septiembre","octubre","noviembre","diciembre"];
 
+// Agentic solo se contabiliza a partir de mayo 2026 (decisión de negocio:
+// los meses previos tenían rollout parcial y no son comparables). El filtro
+// de Mes y la opción "Todos" excluyen todo lo anterior.
+const AGENTIC_MIN_MONTH = 5;
+const inAgenticWindow = (m) => m != null && m >= AGENTIC_MIN_MONTH;
+
 // Helpers to look up the seats row for a specific month or fall back.
 function seatsForMonth(m) {
-  const all = DATA.agenticSeatsByMonth || [];
+  const all = (DATA.agenticSeatsByMonth || []).filter(s => inAgenticWindow(Number(s.month)));
   if (m == null || m === "") {
-    // No filter: show the most recent month available.
-    return all[all.length - 1] || DATA.agenticSeats || {};
+    // No filter: show the most recent month available within the window.
+    return all[all.length - 1] || {};
   }
-  return all.find(s => Number(s.month) === Number(m))
-    || DATA.agenticSeats
-    || {};
+  return all.find(s => Number(s.month) === Number(m)) || {};
 }
 
 function setupAgenticFilters() {
   // Months come from both Trend (date) and Cost rows so the picker covers
-  // every month with any kind of agentic data.
+  // every month with any kind of agentic data, but only meses ≥ AGENTIC_MIN_MONTH.
   const trendMonths = (DATA.agenticTrend || [])
     .map(r => r.date ? r.date.getMonth() + 1 : null)
-    .filter(m => m != null);
+    .filter(inAgenticWindow);
   const costMonths = (DATA.agenticCost || [])
     .map(r => r.month != null ? Number(r.month) : null)
-    .filter(m => m != null);
+    .filter(inAgenticWindow);
   const months = uniq([...trendMonths, ...costMonths]).sort((a,b) => a - b);
 
   const sel = $("#ag-month");
@@ -1469,9 +1473,14 @@ function drawAgentic() {
   const mSel = $("#ag-month")?.value || "";
   const m = mSel === "" ? null : Number(mSel);
 
-  const trendAll = DATA.agenticTrend || [];
-  const costAll = DATA.agenticCost || [];
-  const trend = m == null ? trendAll : trendAll.filter(r => r.date && (r.date.getMonth() + 1) === m);
+  // Always restrict to the agentic window (mayo en adelante). "Todos" consolida
+  // sólo los meses dentro de la ventana.
+  const trendAll = (DATA.agenticTrend || [])
+    .filter(r => r.date && inAgenticWindow(r.date.getMonth() + 1));
+  const costAll = (DATA.agenticCost || [])
+    .filter(r => inAgenticWindow(Number(r.month)));
+
+  const trend = m == null ? trendAll : trendAll.filter(r => (r.date.getMonth() + 1) === m);
   const cost = m == null ? costAll : costAll.filter(r => Number(r.month) === m);
   const seats = seatsForMonth(m);
 
