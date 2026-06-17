@@ -1688,8 +1688,11 @@ function drawAgByModel(rows) {
   }
   const entries = Object.entries(byModel).sort((a, b) => b[1] - a[1]);
   const labels = entries.map(e => e[0]);
-  const data = entries.map(e => e[1]);
-  const total = data.reduce((s, v) => s + v, 0) || 1;
+  const counts = entries.map(e => e[1]);
+  const total = counts.reduce((s, v) => s + v, 0) || 1;
+  // Show shares (%), not absolute executions — el total ya está en el KPI de
+  // arriba ("Tool executions"). Este chart sólo comunica la composición.
+  const shares = counts.map(v => +(v / total * 100).toFixed(1));
 
   // Horizontal bar chart — long model names render cleanly on the Y axis.
   CHARTS["ag-by-model"] = new Chart($("#ag-by-model-chart"), {
@@ -1697,8 +1700,8 @@ function drawAgByModel(rows) {
     data: {
       labels,
       datasets: [{
-        label: "Tool executions",
-        data,
+        label: "% Share",
+        data: shares,
         backgroundColor: ["#FE805B","#3DA670","#4A7FBF","#E8B845","#8E6FBF","#A0A0A0"],
       }],
     },
@@ -1710,30 +1713,35 @@ function drawAgByModel(rows) {
         legend: { display: false },
         tooltip: {
           callbacks: {
-            label: (ctx) => `${ctx.parsed.x} executions (${(ctx.parsed.x / total * 100).toFixed(1)}%)`,
+            label: (ctx) => `${ctx.parsed.x.toFixed(1)}%`,
           },
         },
       },
-      scales: { x: { beginAtZero: true } },
+      scales: {
+        x: {
+          beginAtZero: true,
+          max: 100,
+          ticks: { callback: (v) => v + "%" },
+        },
+      },
     },
   });
 
-  // Companion table — same data with absolute count and share.
+  // Companion table — only model + % share (no absolute counts).
   const tableEl = $("#ag-by-model-table");
   if (tableEl) {
     const rowsHtml = entries.map(([m, v]) =>
-      `<tr><td>${m}</td><td style="text-align:right">${fmtNumber(v)}</td><td style="text-align:right">${(v / total * 100).toFixed(1)}%</td></tr>`
+      `<tr><td>${m}</td><td style="text-align:right">${(v / total * 100).toFixed(1)}%</td></tr>`
     ).join("");
     tableEl.innerHTML = `
       <table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead>
           <tr style="border-bottom:1px solid #ddd;text-align:left">
             <th>Modelo</th>
-            <th style="text-align:right">Executions</th>
             <th style="text-align:right">% Share</th>
           </tr>
         </thead>
-        <tbody>${rowsHtml || '<tr><td colspan="3" style="text-align:center;color:#888">Sin datos en el filtro</td></tr>'}</tbody>
+        <tbody>${rowsHtml || '<tr><td colspan="2" style="text-align:center;color:#888">Sin datos en el filtro</td></tr>'}</tbody>
       </table>
     `;
   }
