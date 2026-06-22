@@ -1394,7 +1394,14 @@ function drawMgrComplChart(cierreRows) {
       datasets: [{
         label: "% Achievement",
         data: vals,
-        backgroundColor: vals.map(v => v >= 100 ? "#3DA670" : v >= 80 ? "#E8B845" : "#D9534F"),
+        // Tiers: ≥100 verde, 96–99.9 verde clarito (casi a target),
+        // 80–95.9 amarillo, <80 rojo.
+        backgroundColor: vals.map(v =>
+          v >= 100 ? "#3DA670" :
+          v >= 96  ? "#A5D6A7" :
+          v >= 80  ? "#E8B845" :
+                     "#D9534F"
+        ),
       }],
     },
     options: {
