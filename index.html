@@ -439,7 +439,16 @@
       </div>
       <div class="table-wrap">
         <h2 style="margin:0 0 4px;font-size:14px">Detalle — filas filtradas</h2>
-        <div class="desc">Todas las filas que cumplen los filtros activos</div>
+        <div class="desc">Los filtros de arriba (globales) se cruzan con los filtros específicos de esta tabla.</div>
+        <div class="filters" id="cat-tbl-filters" style="margin:6px 0 10px">
+          <label>Q<select id="cat-tbl-q"></select></label>
+          <label>Mes<select id="cat-tbl-mes"></select></label>
+          <label>Cliente<select id="cat-tbl-client"></select></label>
+          <label>Manager<select id="cat-tbl-manager"></select></label>
+          <label>Buscar<input type="text" id="cat-tbl-search" placeholder="Solution, usuario…"/></label>
+          <button class="clear-btn" id="cat-tbl-clear">Limpiar</button>
+          <span id="cat-tbl-count" style="margin-left:8px;font-size:12px;color:#666"></span>
+        </div>
         <div id="cat-table"></div>
       </div>
     </section>
@@ -449,7 +458,7 @@
         <h2>Managers — Uso & Productividad</h2>
         <p>Uso por manager × cliente × tool (mensual / quarter) + KPI 1 Productividad vs Target.</p>
         <div class="target-note">
-          <strong>Referencia del target:</strong> el Target Productivity equivale al promedio de los últimos meses estables de Q4-2025 + 10%.
+          <strong>Referencia del target:</strong> el target de productividad equivale al forecasteo de eficiencia planteado en el IF 2026 para H2 (33% por encima del cierre del KPI 1 en el mes de junio).
         </div>
       </div>
       <div class="kpi-grid" id="mgr-kpis"></div>
@@ -1091,7 +1100,11 @@ function drawCatMonthly(rows) {
     if (r.usage != null) byMonth[ym][r.solution].push(r.usage);
   }
   const months = Object.keys(byMonth).sort();
-  const solutions = uniq(rows.map(r => r.solution)).sort();
+  // Reporting se excluye a pedido: no aporta a la lectura de eficiencia
+  // que este chart pretende mostrar (queda saturado y dispara la escala).
+  const solutions = uniq(rows.map(r => r.solution))
+    .filter(s => s && s.toLowerCase() !== "reporting")
+    .sort();
   const datasets = solutions.map((s,i) => ({
     label: s,
     data: months.map(m => byMonth[m][s] && byMonth[m][s].length ? avg(byMonth[m][s]) * 100 : null),
@@ -1144,8 +1157,80 @@ function drawCatLastWeek() {
   });
 }
 
+// Ese base de filas viene ya filtrado por los filtros globales de Catalyst
+// (Año/Quarter/Mes/Solución/Manager/Cliente en la parte superior de la vista).
+// Los filtros de tabla se cruzan sobre ese resultado con AND — permiten al
+// usuario cambiar el corte del detalle sin volver a tocar los globales.
+let _catTableSource = [];
+
 function drawCatTable(rows) {
-  const data = rows.map(r => [
+  _catTableSource = rows || [];
+  setupCatTableFilters();
+  applyCatTableFilters();
+}
+
+// Poblado idempotente de los selects; guarda `data-populated` para no duplicar
+// listeners y no perder la selección del usuario si drawCatTable() se re-corre.
+function setupCatTableFilters() {
+  const qs = uniq(_catTableSource.map(r => r.quarter).filter(Boolean)).sort();
+  const meses = uniq(_catTableSource.map(r => r.month).filter(m => m != null)).sort((a,b)=>a-b);
+  const clientes = uniq(_catTableSource.map(r => r.client).filter(Boolean)).sort();
+  const managers = uniq(_catTableSource.map(r => r.manager).filter(Boolean)).sort();
+
+  populateSelect("#cat-tbl-q", qs);
+  populateSelect("#cat-tbl-client", clientes);
+  populateSelect("#cat-tbl-manager", managers);
+  // meses: value = número, label = "abr", "may", etc.
+  const mesSel = $("#cat-tbl-mes");
+  if (mesSel) {
+    const prev = mesSel.value;
+    mesSel.innerHTML = '<option value="">Todos</option>' +
+      meses.map(m => `<option value="${m}">${monthLabel(m)}</option>`).join("");
+    if (prev && [...mesSel.options].some(o => o.value === prev)) mesSel.value = prev;
+  }
+
+  const bindOnce = (sel, evt, fn) => {
+    const el = $(sel);
+    if (el && !el.dataset.bound) {
+      el.addEventListener(evt, fn);
+      el.dataset.bound = "1";
+    }
+  };
+  bindOnce("#cat-tbl-q", "change", applyCatTableFilters);
+  bindOnce("#cat-tbl-mes", "change", applyCatTableFilters);
+  bindOnce("#cat-tbl-client", "change", applyCatTableFilters);
+  bindOnce("#cat-tbl-manager", "change", applyCatTableFilters);
+  bindOnce("#cat-tbl-search", "input", applyCatTableFilters);
+  bindOnce("#cat-tbl-clear", "click", () => {
+    ["#cat-tbl-q","#cat-tbl-mes","#cat-tbl-client","#cat-tbl-manager","#cat-tbl-search"]
+      .forEach(s => { const el = $(s); if (el) el.value = ""; });
+    applyCatTableFilters();
+  });
+}
+
+function applyCatTableFilters() {
+  const fq = ($("#cat-tbl-q")?.value || "").trim();
+  const fm = ($("#cat-tbl-mes")?.value || "").trim();
+  const fc = ($("#cat-tbl-client")?.value || "").trim();
+  const fmgr = ($("#cat-tbl-manager")?.value || "").trim();
+  const fs = ($("#cat-tbl-search")?.value || "").toLowerCase().trim();
+
+  const filtered = _catTableSource.filter(r => {
+    if (fq && r.quarter !== fq) return false;
+    if (fm && String(r.month) !== fm) return false;
+    if (fc && r.client !== fc) return false;
+    if (fmgr && r.manager !== fmgr) return false;
+    if (fs) {
+      const blob = [r.solution, r.user, r.manager, r.client].filter(Boolean).join(" ").toLowerCase();
+      if (!blob.includes(fs)) return false;
+    }
+    return true;
+  });
+
+  const count = $("#cat-tbl-count");
+  if (count) count.textContent = `Mostrando ${filtered.length} de ${_catTableSource.length} filas`;
+
+  const data = filtered.map(r => [
     r.year || "—",
     r.quarter || "—",
     monthLabel(r.month),
@@ -1450,12 +1535,12 @@ function drawMgrComplChart(cierreRows, half) {
       datasets: [{
         label: `% Achievement ${half}`,
         data: vals,
-        // Tiers: ≥100 verde, 96–99.9 verde clarito (casi a target),
-        // 80–95.9 amarillo, <80 rojo.
+        // Tiers: ≥100 verde, ≥70 verde clarito, <70 rojo.
+        // Se simplificó a 3 niveles porque un manager arriba del 70% ya está
+        // en camino de cumplir target.
         backgroundColor: vals.map(v =>
           v >= 100 ? "#3DA670" :
-          v >= 96  ? "#A5D6A7" :
-          v >= 80  ? "#E8B845" :
+          v >= 70  ? "#A5D6A7" :
                      "#D9534F"
         ),
       }],
