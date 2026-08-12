@@ -1980,14 +1980,14 @@ function applyAgExecFilters() {
     r.client || "—",
     r.executions
   ]);
-  const wrap = $("#ag-exec-table"); wrap.innerHTML = "";
-  new gridjs.Grid({
-    columns: ["Fecha","Usuario","Cliente","Executives"],
+  // Se usa simpleTable en vez de Grid.js porque este último cachea datos entre
+  // renders y los filtros no impactaban en la tabla (mismo bug que motivó el
+  // refactor de las tablas de Managers en la iteración anterior).
+  simpleTable("#ag-exec-table",
+    ["Fecha","Usuario","Cliente","Executives"],
     data,
-    pagination: { limit: 10 },
-    search: true, sort: true,
-    language: { search: { placeholder: "Type a clapper name..." } }
-  }).render(wrap);
+    { pageSize: 10 }
+  );
 }
 </script>
 
