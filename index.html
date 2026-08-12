@@ -577,6 +577,12 @@
       <div class="table-wrap">
         <h2 style="margin:0 0 4px;font-size:14px">Tool executions log</h2>
         <div class="desc">Cada fila representa un executive generado</div>
+        <div class="filters" id="ag-exec-filters" style="margin:6px 0 10px">
+          <label>Usuario<select id="ag-exec-user"></select></label>
+          <label>Cliente<select id="ag-exec-client"></select></label>
+          <button class="clear-btn" id="ag-exec-clear">Limpiar</button>
+          <span id="ag-exec-count" style="margin-left:8px;font-size:12px;color:#666"></span>
+        </div>
         <div id="ag-exec-table"></div>
       </div>
     </section>
@@ -1930,15 +1936,58 @@ function drawAgByModel(rows) {
   }
 }
 
+// Guardamos la fuente ya month-filtrada por drawAgentic para que los filtros
+// de Usuario/Cliente se apliquen sobre ese mismo subset.
+let _agExecSource = [];
+
 function drawAgExecTable(rows) {
-  const data = rows.map(r => [
+  _agExecSource = rows || [];
+  setupAgExecFilters();
+  applyAgExecFilters();
+}
+
+function setupAgExecFilters() {
+  const users = uniq(_agExecSource.map(r => r.user).filter(Boolean)).sort();
+  const clients = uniq(_agExecSource.map(r => r.client).filter(Boolean)).sort();
+  populateSelect("#ag-exec-user", users);
+  populateSelect("#ag-exec-client", clients);
+  const bindOnce = (sel, evt, fn) => {
+    const el = $(sel);
+    if (el && !el.dataset.bound) { el.addEventListener(evt, fn); el.dataset.bound = "1"; }
+  };
+  bindOnce("#ag-exec-user", "change", applyAgExecFilters);
+  bindOnce("#ag-exec-client", "change", applyAgExecFilters);
+  bindOnce("#ag-exec-clear", "click", () => {
+    ["#ag-exec-user","#ag-exec-client"].forEach(s => { const el = $(s); if (el) el.value = ""; });
+    applyAgExecFilters();
+  });
+}
+
+function applyAgExecFilters() {
+  const fu = ($("#ag-exec-user")?.value || "").trim();
+  const fc = ($("#ag-exec-client")?.value || "").trim();
+  const filtered = _agExecSource.filter(r => {
+    if (fu && r.user !== fu) return false;
+    if (fc && r.client !== fc) return false;
+    return true;
+  });
+  const count = $("#ag-exec-count");
+  if (count) count.textContent = `Mostrando ${filtered.length} de ${_agExecSource.length} filas`;
+
+  const data = filtered.map(r => [
     r.date.toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" }),
     r.user || "—",
     r.client || "—",
     r.executions
   ]);
   const wrap = $("#ag-exec-table"); wrap.innerHTML = "";
-  new gridjs.Grid({ columns: ["Fecha","Usuario","Cliente","Executives"], data, pagination: { limit: 10 }, search: true, sort: true, language: { search: { placeholder: "Type a clapper name..." } } }).render(wrap);
+  new gridjs.Grid({
+    columns: ["Fecha","Usuario","Cliente","Executives"],
+    data,
+    pagination: { limit: 10 },
+    search: true, sort: true,
+    language: { search: { placeholder: "Type a clapper name..." } }
+  }).render(wrap);
 }
 </script>
 
