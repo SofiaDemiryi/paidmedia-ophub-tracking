@@ -2032,14 +2032,7 @@ function drawAgByMcp(rows) {
       plugins: {
         legend: { display: false },
         tooltip: {
-          callbacks: {
-            // Mostramos share + count absoluto para que se vea el volumen
-            // por MCP (es útil porque el total no está separado en ningún KPI).
-            label: (ctx) => {
-              const v = counts[ctx.dataIndex];
-              return `${ctx.parsed.x.toFixed(1)}% — ${v} executions`;
-            },
-          },
+          callbacks: { label: (ctx) => `${ctx.parsed.x.toFixed(1)}%` },
         },
       },
       scales: {
@@ -2054,18 +2047,17 @@ function drawAgByMcp(rows) {
   const tableEl = $("#ag-by-mcp-table");
   if (tableEl) {
     const rowsHtml = entries.map(([m, v]) =>
-      `<tr><td>${m}</td><td style="text-align:right">${v}</td><td style="text-align:right">${(v / total * 100).toFixed(1)}%</td></tr>`
+      `<tr><td>${m}</td><td style="text-align:right">${(v / total * 100).toFixed(1)}%</td></tr>`
     ).join("");
     tableEl.innerHTML = `
       <table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead>
           <tr style="border-bottom:1px solid #ddd;text-align:left">
             <th>MCP</th>
-            <th style="text-align:right">Executions</th>
             <th style="text-align:right">% Share</th>
           </tr>
         </thead>
-        <tbody>${rowsHtml || '<tr><td colspan="3" style="text-align:center;color:#888">Sin executions con MCP en el filtro activo</td></tr>'}</tbody>
+        <tbody>${rowsHtml || '<tr><td colspan="2" style="text-align:center;color:#888">Sin executions con MCP en el filtro activo</td></tr>'}</tbody>
       </table>
     `;
   }
